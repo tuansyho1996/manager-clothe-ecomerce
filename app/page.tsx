@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 
 type Product = {
-  id: number;
+  id: string;
   name: string;
   category: string;
   sku: string;
@@ -11,14 +11,6 @@ type Product = {
   stock: number;
   color: string;
 };
-
-const initialProducts: Product[] = [
-  { id: 1, name: "The Everyday Tee", category: "Tops", sku: "TOP-001", price: 38, stock: 48, color: "#e8d8c8" },
-  { id: 2, name: "Sunday Knit", category: "Knitwear", sku: "KNT-002", price: 98, stock: 12, color: "#d8d1c5" },
-  { id: 3, name: "Relaxed Linen Shirt", category: "Tops", sku: "TOP-003", price: 84, stock: 31, color: "#cad9dc" },
-  { id: 4, name: "The Weekend Trouser", category: "Bottoms", sku: "BTM-004", price: 110, stock: 7, color: "#d8c6ae" },
-  { id: 5, name: "Sunday Cotton Dress", category: "Dresses", sku: "DRS-005", price: 128, stock: 0, color: "#ede7db" },
-];
 
 const orders = [
   { id: "#SS-1048", customer: "Olivia Rhye", initials: "OR", color: "lavender", date: "Today, 10:42 am", total: 136, status: "Processing" },
@@ -62,10 +54,47 @@ function Icon({ name, size = 18 }: { name: string; size?: number }) {
 }
 
 export default function Home() {
-  const [products, setProducts] = useState(initialProducts);
+  const [products, setProducts] = useState<Product[]>([]);
   const [search, setSearch] = useState("");
   const [showProductForm, setShowProductForm] = useState(false);
   const [notice, setNotice] = useState("");
+  const [inventoryError, setInventoryError] = useState("");
+  const [formError, setFormError] = useState("");
+  const [isLoadingProducts, setIsLoadingProducts] = useState(true);
+  const [isSavingProduct, setIsSavingProduct] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProducts() {
+      try {
+        const response = await fetch("/api/products", { cache: "no-store" });
+        const result = await response.json();
+
+        if (!response.ok) {
+          throw new Error(result.error ?? "Could not load products.");
+        }
+
+        if (!cancelled) {
+          setProducts(result.products as Product[]);
+          setInventoryError("");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setInventoryError(error instanceof Error ? error.message : "Could not load products.");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingProducts(false);
+        }
+      }
+    }
+
+    void loadProducts();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filteredProducts = useMemo(
     () => products.filter((product) =>
@@ -74,25 +103,42 @@ export default function Home() {
     [products, search],
   );
 
-  function addProduct(event: FormEvent<HTMLFormElement>) {
+  async function addProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const formData = new FormData(event.currentTarget);
+    const form = event.currentTarget;
+    const formData = new FormData(form);
     const name = String(formData.get("name")).trim();
     const sku = String(formData.get("sku")).trim();
     const category = String(formData.get("category"));
     const price = Number(formData.get("price"));
     const stock = Number(formData.get("stock"));
 
-    if (!name || !sku || price < 0 || stock < 0) return;
+    setFormError("");
+    setIsSavingProduct(true);
 
-    setProducts((current) => [
-      { id: Date.now(), name, sku, category, price, stock, color: "#e8d8c8" },
-      ...current,
-    ]);
-    setShowProductForm(false);
-    setNotice(`${name} added to your inventory`);
-    window.setTimeout(() => setNotice(""), 3200);
-    event.currentTarget.reset();
+    try {
+      const response = await fetch("/api/products", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, sku, category, price, stock }),
+      });
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error ?? "Could not save this product.");
+      }
+
+      const product = result.product as Product;
+      setProducts((current) => [product, ...current]);
+      setShowProductForm(false);
+      setNotice(`${product.name} saved to MongoDB`);
+      window.setTimeout(() => setNotice(""), 3200);
+      form.reset();
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : "Could not save this product.");
+    } finally {
+      setIsSavingProduct(false);
+    }
   }
 
   function exportReport() {
@@ -276,6 +322,12 @@ export default function Home() {
                 <button className="button button-dark" onClick={() => setShowProductForm(true)} type="button"><Icon name="plus" size={16} />Add product</button>
               </div>
             </div>
+            {inventoryError && (
+              <div className="inventory-error" role="alert">
+                <span>{inventoryError}</span>
+                <button type="button" onClick={() => window.location.reload()}>Retry</button>
+              </div>
+            )}
             <div className="table-scroll">
               <table className="inventory-table">
                 <thead><tr><th>PRODUCT</th><th>SKU</th><th>CATEGORY</th><th>PRICE</th><th>STOCK</th><th><span className="sr-only">Product actions</span></th></tr></thead>
@@ -290,7 +342,12 @@ export default function Home() {
                       <td><button className="row-action more-action" type="button" aria-label={`More options for ${product.name}`}>···</button></td>
                     </tr>
                   ))}
-                  {filteredProducts.length === 0 && <tr><td className="empty-row" colSpan={6}>No products match “{search}”.</td></tr>}
+                  {isLoadingProducts && <tr><td className="empty-row" colSpan={6}>Loading products from MongoDB...</td></tr>}
+                  {!isLoadingProducts && filteredProducts.length === 0 && (
+                    <tr><td className="empty-row" colSpan={6}>
+                      {search ? `No products match “${search}”.` : "No products in your MongoDB inventory yet. Add your first product."}
+                    </td></tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -319,7 +376,8 @@ export default function Home() {
                 <label className="form-field">Price (USD)<input name="price" type="number" min="0" step="0.01" placeholder="0.00" required /></label>
                 <label className="form-field">Stock quantity<input name="stock" type="number" min="0" step="1" placeholder="0" required /></label>
               </div>
-              <div className="modal-actions"><button className="button button-outline" type="button" onClick={() => setShowProductForm(false)}>Cancel</button><button className="button button-dark" type="submit"><Icon name="plus" size={16} />Add product</button></div>
+              {formError && <p className="form-error" role="alert">{formError}</p>}
+              <div className="modal-actions"><button className="button button-outline" type="button" onClick={() => setShowProductForm(false)} disabled={isSavingProduct}>Cancel</button><button className="button button-dark" type="submit" disabled={isSavingProduct}>{isSavingProduct ? "Saving..." : <><Icon name="plus" size={16} />Add product</>}</button></div>
             </form>
           </section>
         </div>

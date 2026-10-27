@@ -1,22 +1,25 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Manager Shop
 
-## Getting Started
+Shop management dashboard built with [Next.js](https://nextjs.org).
 
-First, run the development server:
+## Connect MongoDB
+
+1. Start a local MongoDB server, or create a MongoDB Atlas cluster and database user.
+2. Copy `.env.example` to `.env.local` in this folder.
+3. Set `MONGODB_URI` in `.env.local` to your MongoDB connection string. Keep this file private; it is ignored by Git.
+4. Optionally change `MONGODB_DB` from `manager_shop` to your database name.
+
+The manager reads and creates documents in the `products` collection. Each product has a name, SKU, category, price, stock quantity, color, and creation date. SKUs are unique.
+
+## Run locally
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3100](http://localhost:3100).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Run `npm run lint` and `npm run build` to validate changes.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
 
